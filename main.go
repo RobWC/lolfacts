@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
-	"html/template"
 	"log"
 	"math"
 	"net/http"
 	"strconv"
+	"text/template"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -18,9 +18,11 @@ import (
 var db *bolt.DB
 
 var siteT *template.Template
+var fmap template.FuncMap
 
 var champPage string = `{{ define "body" }}
 <h1>{{ .Name }} --- {{ .Title }}</h1>
+<img src="data:image/jpg;base64,{{.Image.Encoded}}">
 <p>{{ .Blurb }}</p>
 
 <h2>Type: {{$tlen := len .Tags}}{{ range $i, $e := .Tags}}{{$e}}{{ $v := add $i 1}}{{if ne $v $tlen}}, {{end}}{{end}}</h2>
@@ -33,11 +35,17 @@ var champPage string = `{{ define "body" }}
 <tr><td>Armor</td><td>{{ .Stats.Armor}}(+{{.Stats.ArmorPerLevel}})</td></tr>
 <tr><td>MR</td><td>{{.Stats.SpellBlock}}(+{{.Stats.SpellBlockPerLevel}})</td></tr>
 <tr><td>AD</td><td>{{ .Stats.AttackDamage}}(+{{.Stats.AttackDamagePerLevel}})</td></tr>
-<tr><td>AS</td><td>{{ ascalc .Stats.AttackSpeedOffset}}(+{{.Stats.AttackSpeedPerLevel}})</td></tr>
+<tr><td>AS</td><td>{{ ascalc .Stats.AttackSpeedOffset}}(+{{asplcalc .Stats.AttackSpeedPerLevel}})</td></tr>
 <tr><td>Crit</td><td>{{ .Stats.Crit}}(+{{.Stats.CritPerLevel}})</td></tr>
 <tr><td>Range</td><td>{{ .Stats.AttackRange}}</td></tr>
 <tr><td>MS</td><td>{{ .Stats.MoveSpeed }}</td><tr>          
 </table>
+
+Spells:
+------------------------------------------
+{{printf "%-22s" .Passive.Name}}    Passive
+{{ range $i, $v := .Spells }}{{ printf "%-22s" $v.Name }}    {{ $tlen := len .Cooldown }}{{ range $i, $e := .Cooldown}}{{$v := add $i 1}}{{ $e }}{{ if ne $v $tlen}}/{{end }}{{ end }}
+{{end}}
 {{ end }}`
 
 var page string = `<html>
@@ -56,24 +64,28 @@ func updateDatabase(db *bolt.DB, version string) error {
 	if err != nil {
 		return err
 	}
-	var buff bytes.Buffer
 
 	db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte("champs"))
-		return err
-	})
+		b, err := tx.CreateBucketIfNotExists([]byte("champs"))
 
-	for i := range champs {
-		db.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte("champs"))
+		for i := range champs {
+
+			var buff bytes.Buffer
+
+			champ := champs[i]
 
 			enc := gob.NewEncoder(&buff)
-			enc.Encode(champs[i])
-			err := b.Put([]byte(champs[i].Name), buff.Bytes())
+			enc.Encode(champ)
+			err := b.Put([]byte(champ.Name), buff.Bytes())
+			if err != nil {
+				log.Println(err)
+			}
 			buff.Reset()
-			return err
-		})
-	}
+
+		}
+		return err
+
+	})
 	return nil
 }
 
@@ -81,6 +93,8 @@ func init() {
 	siteT = template.New("site")
 	siteT, _ = siteT.Parse(page)
 	siteT, _ = siteT.Parse(head)
+
+	fmap = template.FuncMap{"add": add, "mult": mult, "ascalc": ascalc, "asplcalc": asplcalc}
 
 }
 
@@ -93,7 +107,7 @@ func main() {
 	}
 	defer db.Close()
 
-	updateDatabase(db, "6.5.1")
+	updateDatabase(db, "6.2.1")
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", homeHandler)
@@ -113,6 +127,13 @@ func mult(a int, b float32) float32 {
 func ascalc(aso float32) string {
 	s := math.Pow(10, float64(3))
 	v := float64(0.625 / (math.Floor((1-float64(aso))*s) / s))
+	nv := strconv.FormatFloat(v, 'f', -1, 32)
+	return nv[:5]
+}
+
+func asplcalc(as float32) string {
+	s := math.Pow(10, float64(3))
+	v := float64(0.625 / (math.Floor((1-float64(as))*s) / s))
 	nv := strconv.FormatFloat(v, 'f', -1, 32)
 	return nv[:5]
 }
@@ -139,8 +160,7 @@ func lolChamp(resp http.ResponseWriter, req *http.Request) {
 			resp.Write([]byte("Not Found"))
 			return err
 		}
-
-		fmap := template.FuncMap{"add": add, "mult": mult, "ascalc": ascalc}
+		champ.Image.EncodeImage("6.4.1")
 
 		champT, err := siteT.Funcs(fmap).Parse(champPage)
 		if err != nil {
