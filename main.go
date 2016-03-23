@@ -58,6 +58,7 @@ var homePage string = `{{ define "body" }}
 
 var itemPage string = `{{ define "body" }}
 <h1>{{.Name}}</h1>
+<img src="data:image/jpg;base64,{{.Image.Encoded}}">
 {{ end }}`
 
 var champPage string = `{{ define "body" }}
@@ -67,7 +68,7 @@ var champPage string = `{{ define "body" }}
 
 <h2>Type: {{$tlen := len .Tags}}{{ range $i, $e := .Tags}}{{$e}}{{ $v := add $i 1}}{{if ne $v $tlen}}, {{end}}{{end}}</h2>
 
-<table class="table-striped">
+<table class="table">
 <tr><td>HP</td><td>{{ .Stats.HP }}(+{{.Stats.HPPerLevel}})</td><tr>
 <tr><td>HP Regen</td><td>{{.Stats.HPRegen}}(+{{.Stats.HPRegenPerLevel}})</td></tr> 
 <tr><td>Mana</td><td>{{ .Stats.MP }}(+{{.Stats.MPPerLevel}})</td></tr>
@@ -82,17 +83,31 @@ var champPage string = `{{ define "body" }}
 </table>
 
 <h3>Spells</h3>
-<div class="panel">
-<div class="panel-header">{{.Passive.Name}}</div>
+<div class="panel panel-default">
+<div class="panel-heading">
+  <div class="panel-title">{{.Passive.Name}}</div>
+</div>
 <div class="panel-body">
-<img src="data:image/jpg;base64,{{.Passive.Image.Encoded}}">Passive
+<img src="data:image/jpg;base64,{{.Passive.Image.Encoded}}">
+<p>Passive</p>
 <p>
 {{.Passive.Description}}
 </p>
 </div>
 </div>
 {{ range $i, $v := .Spells }}
-<img src="data:image/jpg;base64,{{$v.Image.Encoded}}"></td><td>{{$v.Name }}{{ $tlen := len .Cooldown }}{{ range $i, $e := .Cooldown}}{{$v := add $i 1}}{{ $e }}{{ if ne $v $tlen}}/{{end }}{{ end }}
+<div class="panel panel-default">
+<div class="panel-heading">
+  <div class="panel-title">{{$v.Name}}</div>
+</div>
+<div class="panel-body">
+<img src="data:image/jpg;base64,{{$v.Image.Encoded}}">
+<p>{{ $tlen := len .Cooldown }}{{ range $i, $e := .Cooldown}}{{$v := add $i 1}}{{ $e }}{{ if ne $v $tlen}}/{{end }}{{ end }}</p>
+<p>
+{{$v.Description}}
+</p>
+</div>
+</div>
 {{end}}
 {{ end }}`
 
@@ -109,6 +124,9 @@ var head string = `
 <meta charset="utf-8"> 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+<style>
+td {width:50%;}
+</style>
 {{ end }}`
 
 func updateDatabase(db *bolt.DB, version string) error {
@@ -218,10 +236,11 @@ func main() {
 	}
 	defer db.Close()
 
-	err = updateDatabase(db, "6.2.1")
+	/*err = updateDatabase(db, "6.2.1")
 	if err != nil {
 		log.Fatal(err)
 	}
+	*/
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", homeHandler)
@@ -229,7 +248,7 @@ func main() {
 	r.HandleFunc("/item/{name}", lolItem)
 	http.Handle("/", r)
 	log.Println("listening")
-	http.ListenAndServe(":8888", nil)
+	http.ListenAndServe("127.0.0.1:8888", nil)
 }
 
 func add(a, b int) int {
